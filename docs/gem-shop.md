@@ -66,4 +66,5 @@ change back on.
   as the original. Interrupted runs are finished or undone. A replaced OBB is
   patched again. The gem-shop OBB mod is detected and left alone.
 - On a PS Vita (2026-10-27): the stock OBB was patched at first launch in the
-  same way as on the PC (same new file size), and the game booted and ran normally.
+  same way as on the PC (same new file size). The game booted normally, and every
+  premium plant in the shop showed as purchasable with gems.
