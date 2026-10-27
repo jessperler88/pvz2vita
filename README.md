@@ -20,6 +20,19 @@
 >   results against the original);
 > - optional profiling and A/B testing build options.
 >
+> **Premium plants shop (OBB mod):** offline, the real-money premium plants
+> only show "service unavailable". A modded `game.obb` changes the shop data
+> (`PACKAGES\MAGENTO.RTON`, `MagentoProductProps`) so the 21 premium plants cost
+> **gems** instead. They can then be bought in-game, with gems earned through
+> normal play. Prices are 35 gems (Imitater, Jalapeno, Peanut, Power Lily,
+> Squash), 45 (Chomper, Hypno-shroom, Sap-fling, Snow Pea, Starfruit, Torchwood,
+> Hurrikale), 55 (Toadstool, Strawburst, Cactus, Fire Peashooter, Ghost Pepper,
+> Homing Thistle, Sweet Potato, Lava Guava) and 75 (Electric Blueberry,
+> Jack O' Lantern, Grapeshot, Cold Snapdragon, Escape Root, Shrinking Violet,
+> Blooming Heart). This was tested on a Vita and works. It only changes game
+> data, not the loader. The modded OBB is not included here, because it
+> contains game files.
+>
 > Details and measurements are in [docs/fork-perf-fixes.md](docs/fork-perf-fixes.md).
 > Setup and data requirements are the same as upstream.
 
