@@ -23,6 +23,7 @@
 #include <psp2/kernel/threadmgr.h>
 #include "utils/telemetry.h"
 #include "utils/heap_fallback.h"
+#include "utils/perf_probe.h"
 
 /* Keep malloc/new/delete/realloc in one ownership domain, including recovered
  * kernel-backed blocks. Other loader/graphics allocations retain native libc. */
@@ -220,32 +221,45 @@ void *memcpy_guarded(void *dst, const void *src, size_t n) {
     if (n == 0) return dst;
     if ((uintptr_t)dst < 0x10000u || (uintptr_t)src < 0x10000u || n > 0x4000000u)
         memory_failure("invalid memcpy", dst, src, n, __builtin_return_address(0));
-    return sceClibMemcpy(dst, src, n);
+    PERF_PROBE_BEGIN(PROBE_MEMCPY, n);
+    void *r = sceClibMemcpy(dst, src, n);
+    PERF_PROBE_END(PROBE_MEMCPY);
+    return r;
 }
 void *memmove_guarded(void *dst, const void *src, size_t n) {
     if (n == 0) return dst;
     if ((uintptr_t)dst < 0x10000u || (uintptr_t)src < 0x10000u || n > 0x4000000u)
         memory_failure("invalid memmove", dst, src, n, __builtin_return_address(0));
-    return sceClibMemmove(dst, src, n);
+    PERF_PROBE_BEGIN(PROBE_MEMMOVE, n);
+    void *r = sceClibMemmove(dst, src, n);
+    PERF_PROBE_END(PROBE_MEMMOVE);
+    return r;
 }
 void *memset_guarded(void *dst, int c, size_t n) {
     if (n == 0) return dst;
     if ((uintptr_t)dst < 0x10000u || n > 0x4000000u)
         memory_failure("invalid memset", dst, NULL, n, __builtin_return_address(0));
-    return sceClibMemset(dst, c, n);
+    PERF_PROBE_BEGIN(PROBE_MEMSET, n);
+    void *r = sceClibMemset(dst, c, n);
+    PERF_PROBE_END(PROBE_MEMSET);
+    return r;
 }
 /* ARM EABI memset uses (destination, size, value). */
 void aeabi_memset_guarded(void *dst, size_t n, int c) {
     if (n == 0) return;
     if ((uintptr_t)dst < 0x10000u || n > 0x4000000u)
         memory_failure("invalid aeabi_memset", dst, NULL, n, __builtin_return_address(0));
+    PERF_PROBE_BEGIN(PROBE_MEMSET, n);
     sceClibMemset(dst, c, n);
+    PERF_PROBE_END(PROBE_MEMSET);
 }
 void aeabi_memclr_guarded(void *dst, size_t n) {
     if (n == 0) return;
     if ((uintptr_t)dst < 0x10000u || n > 0x4000000u)
         memory_failure("invalid aeabi_memclr", dst, NULL, n, __builtin_return_address(0));
+    PERF_PROBE_BEGIN(PROBE_MEMSET, n);
     sceClibMemset(dst, 0, n);
+    PERF_PROBE_END(PROBE_MEMSET);
 }
 
 /* PERF 2026-06-30: MEMTRACE wraps EVERY alloc/free with a mutex lock + a
@@ -258,7 +272,9 @@ static const int g_memtrace_on = 0;
 
 void *malloc_soloader(size_t size) {
     if (!g_memtrace_on) {
+        PERF_PROBE_BEGIN(PROBE_MALLOC, size);
         void *p = malloc(size);
+        PERF_PROBE_END(PROBE_MALLOC);
         if (OOM_LOG_ON && !p) l_error("[OOM] malloc(%u) -> NULL", (unsigned)size); if (OOM_LOG_ON && !p) oom_heap_dump(size);
         return p;
     }
@@ -285,7 +301,9 @@ void *calloc_soloader(size_t nmemb, size_t size) {
     }
 
     if (!g_memtrace_on) {
+        PERF_PROBE_BEGIN(PROBE_CALLOC, nmemb * size);
         void *p = calloc(nmemb, size);
+        PERF_PROBE_END(PROBE_CALLOC);
         if (OOM_LOG_ON && !p) l_error("[OOM] calloc(%u,%u) -> NULL", (unsigned)nmemb, (unsigned)size); if (OOM_LOG_ON && !p) oom_heap_dump((size_t)nmemb*size);
         return p;
     }
@@ -310,7 +328,9 @@ void *calloc_soloader(size_t nmemb, size_t size) {
 
 void *realloc_soloader(void *ptr, size_t size) {
     if (!g_memtrace_on) {
+        PERF_PROBE_BEGIN(PROBE_REALLOC, size);
         void *p = realloc(ptr, size);
+        PERF_PROBE_END(PROBE_REALLOC);
         if (OOM_LOG_ON && !p && size) l_error("[OOM] realloc(%p,%u) -> NULL", ptr, (unsigned)size); if (OOM_LOG_ON && !p && size) oom_heap_dump(size);
         return p;
     }
@@ -365,7 +385,9 @@ void *realloc_soloader(void *ptr, size_t size) {
 
 void *memalign_soloader(size_t alignment, size_t size) {
     if (!g_memtrace_on) {
+        PERF_PROBE_BEGIN(PROBE_MEMALIGN, size);
         void *p = memalign(alignment, size);
+        PERF_PROBE_END(PROBE_MEMALIGN);
         if (OOM_LOG_ON && !p) l_error("[OOM] memalign(%u,%u) -> NULL", (unsigned)alignment, (unsigned)size); if (OOM_LOG_ON && !p) oom_heap_dump(size);
         return p;
     }
@@ -418,7 +440,12 @@ void *valloc_soloader(size_t size) {
 }
 
 void free_soloader(void *ptr) {
-    if (!g_memtrace_on) { free(ptr); return; }
+    if (!g_memtrace_on) {
+        PERF_PROBE_BEGIN(PROBE_FREE, 0);
+        free(ptr);
+        PERF_PROBE_END(PROBE_FREE);
+        return;
+    }
     unsigned long long live = 0, peak = 0;
     size_t old_size = 0;
 

@@ -39,6 +39,12 @@
 #include "utils/port_menu.h"
 #include "utils/dialog.h"
 #include "reimpl/rsb_index_vita.h"
+#include "utils/sampler.h"
+#include "reimpl/fastdiv.h"
+#include "utils/lookup_probe.h"
+#include "reimpl/lookup_fast.h"
+#include "reimpl/sprite_uv_fast.h"
+#include "utils/abi_check.h"
 
 #define PVZ2_PATH GAME_DATA_PATH "libPVZ2.so"
 #ifndef PVZ2_SKIP_BOOT_CHECKS
@@ -173,6 +179,32 @@ static void install_resource_error_logging(void) {
     resource_error_original = trace_bridge(0xb786b0, 0xe92d4070, 0xe1a06001, resource_error_trace);
     text_dispatch_original = trace_bridge(0xcb7618, 0xe92d47f0, 0xe24dd010, text_dispatch_trace);
     telemetry_log("INPUT", "native text dispatch trace=%s", text_dispatch_original ? "installed" : "fingerprint mismatch");
+#if !PVZ2_LOOKUP_PROBE
+    if (lookup_fast_prepare(so_mod_pvz2.text_base) == 0) {
+        void *original = trace_bridge(LOOKUP_FAST_OFFSET, LOOKUP_FAST_FIRST, LOOKUP_FAST_SECOND,
+                                      lookup_fast_entry());
+        if (original) lookup_fast_set_original(original);
+        telemetry_log("PATCH", "fast object lookup=%s", original ? "installed" : "entry mismatch");
+    } else {
+        telemetry_log("PATCH", "fast object lookup skipped (fingerprint 0x%08x)",
+                      (unsigned)lookup_fast_fingerprint(so_mod_pvz2.text_base));
+    }
+#endif
+    if (sprite_uv_prepare(so_mod_pvz2.text_base) == 0) {
+        void *original = trace_bridge(SPRITE_UV_OFFSET, SPRITE_UV_FIRST, SPRITE_UV_SECOND, sprite_uv_entry());
+        if (original) sprite_uv_set_original(original);
+        telemetry_log("PATCH", "fast sprite atlas lookup=%s", original ? "installed" : "entry mismatch");
+    } else {
+        telemetry_log("PATCH", "fast sprite atlas lookup skipped (fingerprint 0x%08x)",
+                      (unsigned)sprite_uv_fingerprint(so_mod_pvz2.text_base));
+    }
+#if PVZ2_LOOKUP_PROBE
+    void *lookup_original = trace_bridge(LOOKUP_PROBE_OFFSET, LOOKUP_PROBE_FIRST, LOOKUP_PROBE_SECOND,
+                                         lookup_probe_wrapper());
+    if (lookup_original)
+        lookup_probe_set_original(lookup_original, so_mod_pvz2.text_base, so_mod_pvz2.text_size);
+    telemetry_log("LOOKUP", "object lookup probe=%s", lookup_original ? "installed" : "fingerprint mismatch");
+#endif
 }
 
 static int load_exact_452(void) {
@@ -199,12 +231,16 @@ static int load_exact_452(void) {
 
     result = so_relocate(&so_mod_pvz2);
     if (result != 0) return result;
+    if (pvz2_fastdiv_install(&so_mod_pvz2) != 0)
+        telemetry_log("PATCH", "fast division skipped (helper symbols missing)");
     if (resolve_imports(&so_mod_pvz2) != 0) return -3;
     extern int placement452_install(so_module *);
     if (placement452_install(&so_mod_pvz2) != 0) {
         telemetry_log("FATAL", "4.5.2 placement grid patch fingerprint mismatch");
         return -2;
     }
+    extern int use_action452_install(so_module *);
+    use_action452_install(&so_mod_pvz2); /* non-fatal: logs on mismatch */
     install_resource_error_logging();
     so_flush_caches(&so_mod_pvz2);
     return 0;
@@ -217,6 +253,9 @@ static void *native_or_offset(const char *name, uintptr_t offset) {
 }
 
 static void run_ea_startup(void) {
+#if PVZ2_STACK_SENTINEL
+    telemetry_log("SENTINEL", "%s frame %p", __func__, __builtin_frame_address(0));
+#endif
     typedef void (*JniVoid)(JNIEnv *, jclass);
     typedef void (*EAIOStartup)(JNIEnv *, jclass, jobject, jstring, jstring, jstring);
     JniVoid thread_init = (JniVoid)so_symbol(&so_mod_pvz2,
@@ -239,6 +278,9 @@ static void run_ea_startup(void) {
 }
 
 static void run_init_array_logged(void) {
+#if PVZ2_STACK_SENTINEL
+    telemetry_log("SENTINEL", "%s frame %p", __func__, __builtin_frame_address(0));
+#endif
     telemetry_log("INIT", "running %d constructors", so_mod_pvz2.num_init_array);
     for (int i = 0; i < so_mod_pvz2.num_init_array; ++i) {
         int (*ctor)(void) = so_mod_pvz2.init_array[i];
@@ -254,6 +296,9 @@ static void run_init_array_logged(void) {
 }
 
 static int run_game_initialize(void) {
+#if PVZ2_STACK_SENTINEL
+    telemetry_log("SENTINEL", "%s frame %p", __func__, __builtin_frame_address(0));
+#endif
     typedef jboolean (*GameInit)(JNIEnv *, jobject, jobject, jobject, jobject,
                                  jobject, jobject, jobject, jobject, jobject);
     static const char *classes[] = {
@@ -273,6 +318,9 @@ static int run_game_initialize(void) {
 }
 
 static void run_lifecycle(void) {
+#if PVZ2_STACK_SENTINEL
+    telemetry_log("SENTINEL", "%s frame %p", __func__, __builtin_frame_address(0));
+#endif
     typedef void (*WillFinish)(JNIEnv *, jobject, jstring);
     typedef void (*VoidNative)(JNIEnv *, jobject);
     typedef void (*SurfaceChanged)(JNIEnv *, jclass, jint, jint);
@@ -348,6 +396,31 @@ static void run_lifecycle(void) {
     telemetry_log("LIFECYCLE", "GitHub 4.5.2 launch/surface/active order complete");
 }
 
+#if PVZ2_STACK_SENTINEL
+/* Diagnostic: a pattern-filled block between main's frame and the frame loop.
+ * Stray writes through stale pointers into this old stack region land here. */
+#define SENTINEL_WORDS 8192u
+static volatile uint32_t *g_sentinel;
+static unsigned g_sentinel_hits;
+static void stack_sentinel_check(unsigned frame, const char *phase) {
+    if (!g_sentinel) return;
+    for (unsigned i = 0; i < SENTINEL_WORDS; ++i) {
+        const uint32_t want = 0xa5a50000u | (i & 0xffffu);
+        const uint32_t got = g_sentinel[i];
+        if (got == want) continue;
+        if (g_sentinel_hits < 60)
+            telemetry_log("SENTINEL", "after %s frame=%u addr=%p top_offset=%u value=0x%08x",
+                          phase, frame, (void *)&g_sentinel[i],
+                          (unsigned)((SENTINEL_WORDS - i) * 4u), (unsigned)got);
+        ++g_sentinel_hits;
+        g_sentinel[i] = want;
+    }
+}
+#define SENTINEL_CHECK(frame, phase) stack_sentinel_check((frame), (phase))
+#else
+#define SENTINEL_CHECK(frame, phase) ((void)0)
+#endif
+
 static void run_frame_loop(void) {
     typedef void (*FrameNative)(JNIEnv *, jclass);
     FrameNative pump = (FrameNative)native_or_offset("Native_PumpMessageQueue",
@@ -367,6 +440,12 @@ static void run_frame_loop(void) {
     if (fixed_clock) { fclose(fixed_clock); power_enabled = 0; }
     telemetry_log("POWER", "adaptive CPU=%d; floor444 ceiling%d MHz; fixed30 FPS", power_enabled, cpu_ceiling_mhz);
     telemetry_log("FRAME", "frame loop start: pump -> draw -> vblank swap, fixed target 30 FPS");
+#if PVZ2_FASTDIV_STATS
+    { extern void pvz2_fastdiv_benchmark(void); pvz2_fastdiv_benchmark(); }
+#endif
+#if PVZ2_SAMPLER
+    pvz2_sampler_start(so_mod_pvz2.text_base, 0x0109d868u); /* libPVZ2 executable bytes */
+#endif
     pvz2_stall_start();
     for (;;) {
         pvz2_stall_frame(frame, PVZ2_FRAME_INPUT);
@@ -377,12 +456,30 @@ static void run_frame_loop(void) {
         pvz2_input_replay_tick(begin);
 #endif
         pvz2_stall_frame(frame, PVZ2_FRAME_PUMP);
+#if PVZ2_ABI_CHECK
+        {
+            uint32_t abi_out[9];
+            abi_check_call((void *)pump, &jni, (void *)1, abi_out);
+            abi_check_report("pump", frame, abi_out);
+        }
+#else
         pump(&jni, (jclass)1);
+#endif
+        SENTINEL_CHECK(frame, "pump");
         const uint64_t pumped = sceKernelGetSystemTimeWide();
         extern void pvz2_gl_profile_begin(unsigned);
         pvz2_gl_profile_begin(frame);
         pvz2_stall_frame(frame, PVZ2_FRAME_DRAW);
+#if PVZ2_ABI_CHECK
+        {
+            uint32_t abi_out[9];
+            abi_check_call((void *)draw, &jni, (void *)1, abi_out);
+            abi_check_report("draw", frame, abi_out);
+        }
+#else
         draw(&jni, (jclass)1);
+#endif
+        SENTINEL_CHECK(frame, "draw");
         pvz2_stall_frame(frame, PVZ2_FRAME_CALLBACKS);
         fjni_drain_glu_http();
         pvz2_stall_frame(frame, PVZ2_FRAME_KEYBOARD);
@@ -410,6 +507,9 @@ static void run_frame_loop(void) {
         if (frame_us > peak_us) peak_us = frame_us;
         if (frame_us > 35000) ++slow_frames;
         ++frame;
+#if PVZ2_SAMPLER
+        pvz2_sampler_frame = frame;
+#endif
         if (pvz2_logging_enabled && (frame % 300u) == 0u) {
             pvz2_stall_frame(frame, PVZ2_FRAME_REPORT);
             uint64_t now = sceKernelGetSystemTimeWide();
@@ -439,6 +539,80 @@ static void run_frame_loop(void) {
             unsigned sampled_draw, upload, uploads;
             extern void pvz2_gl_profile_stats(unsigned *, unsigned *, unsigned *);
             pvz2_gl_profile_stats(&sampled_draw, &upload, &uploads);
+#if PVZ2_FASTDIV_STATS
+            {
+                extern volatile uint32_t pvz2_fastdiv_calls, pvz2_fastdiv_misses;
+                const uint32_t calls = pvz2_fastdiv_calls, misses = pvz2_fastdiv_misses;
+                pvz2_fastdiv_calls = pvz2_fastdiv_misses = 0;
+                telemetry_report("DIV", "fast division calls/frame=%u cache misses/frame=%u",
+                                 (unsigned)(calls / 300u), (unsigned)(misses / 300u));
+            }
+#endif
+#if PVZ2_UV_AB
+            {
+                static const char *const uv_modes[] = {"original", "fast", "verify"};
+                uint32_t st[UV_STAT_COUNT];
+                for (unsigned i = 0; i < UV_STAT_COUNT; ++i) {
+                    st[i] = sprite_uv_stat[i];
+                    sprite_uv_stat[i] = 0;
+                }
+                telemetry_report("UV_AB", "mode=%s game_us=%u max_us=%u over35=%u calls/frame=%u fallback=%u verified=%u mismatches=%u",
+                                 uv_modes[sprite_uv_mode % 3u], (unsigned)(draw_us / 300), peak_us, slow_frames,
+                                 (unsigned)(st[UV_STAT_CALLS] / 300u), (unsigned)st[UV_STAT_FALLBACK],
+                                 (unsigned)st[UV_STAT_VERIFIED], (unsigned)st[UV_STAT_MISMATCH]);
+                uint32_t v[6];
+                static unsigned uv_reported;
+                while (sprite_uv_mismatch(uv_reported, v)) {
+                    telemetry_report("UV_AB", "MISMATCH x=%d y=%d kind=%u out0^=%08x wh_delta=%08x u1^=%08x",
+                                     (int)v[0], (int)v[1], (unsigned)v[2], (unsigned)v[3], (unsigned)v[4], (unsigned)v[5]);
+                    ++uv_reported;
+                }
+                sprite_uv_mode = (sprite_uv_mode + 1u) % 3u;
+            }
+#endif
+#if PVZ2_LOOKUP_AB
+            {
+                static const char *const mode_names[] = {"original", "fast", "verify"};
+                uint32_t st[LOOKUP_STAT_COUNT];
+                for (unsigned i = 0; i < LOOKUP_STAT_COUNT; ++i) {
+                    st[i] = lookup_fast_stat[i];
+                    lookup_fast_stat[i] = 0;
+                }
+                telemetry_report("LOOKUP_AB", "mode=%s game_us=%u calls/frame=%u direct=%u hit=%u miss=%u "
+                                 "fallback=%u (pool=%u refcount=%u named=%u slot=%u) verified=%u mismatches=%u",
+                                 mode_names[lookup_fast_mode % 3u], (unsigned)(draw_us / 300),
+                                 (unsigned)(st[LOOKUP_STAT_CALLS] / 300u), (unsigned)st[LOOKUP_STAT_DIRECT],
+                                 (unsigned)st[LOOKUP_STAT_HIT], (unsigned)st[LOOKUP_STAT_MISS],
+                                 (unsigned)st[LOOKUP_STAT_FALLBACK], (unsigned)st[LOOKUP_STAT_FB_POOL],
+                                 (unsigned)st[LOOKUP_STAT_FB_REFCOUNT], (unsigned)st[LOOKUP_STAT_FB_NAMED],
+                                 (unsigned)st[LOOKUP_STAT_FB_SLOT], (unsigned)st[LOOKUP_STAT_VERIFIED],
+                                 (unsigned)st[LOOKUP_STAT_MISMATCH]);
+                uint32_t v[7];
+                static unsigned reported;
+                while (lookup_fast_mismatch(reported, v)) {
+                    telemetry_report("LOOKUP_AB", "MISMATCH key=%08x:%08x fast=%08x:%08x orig=%08x:%08x caller=0x%x",
+                                     (unsigned)v[1], (unsigned)v[0], (unsigned)v[3], (unsigned)v[2],
+                                     (unsigned)v[5], (unsigned)v[4], (unsigned)v[6]);
+                    ++reported;
+                }
+                lookup_fast_mode = (lookup_fast_mode + 1u) % 3u;
+            }
+#endif
+#if PVZ2_LOOKUP_PROBE
+            {
+                char lookup[640];
+                lookup_probe_format(lookup, sizeof(lookup), 300, (unsigned)(draw_us / 300));
+                telemetry_report("LOOKUP", "%s", lookup);
+            }
+#endif
+#if PVZ2_PERF_PROBE
+            {
+                char probe[640];
+                extern void perf_probe_format(char *, size_t, unsigned);
+                perf_probe_format(probe, sizeof(probe), 300);
+                telemetry_report("PROBE", "%s", probe);
+            }
+#endif
             /* Snapshot on the render thread; storage writes run on the observer. */
             telemetry_report("FRAME", "frame=%u measured=%u.%02u fps\n"
                 "[PERF] avg_us input=%u game=%u present=%u max=%u over35ms=%u/300 JNI_live=%u created=%u freed=%u heap_used=%u KiB\n"
@@ -459,6 +633,17 @@ static void run_frame_loop(void) {
         }
     }
 }
+
+#if PVZ2_STACK_SENTINEL
+static __attribute__((noinline)) void run_frame_loop_padded(void) {
+    volatile uint32_t pad[SENTINEL_WORDS];
+    for (unsigned i = 0; i < SENTINEL_WORDS; ++i) pad[i] = 0xa5a50000u | (i & 0xffffu);
+    g_sentinel = pad;
+    telemetry_log("SENTINEL", "pattern block %p..%p (main frame %p)", (void *)pad,
+                  (void *)(pad + SENTINEL_WORDS), __builtin_frame_address(1));
+    run_frame_loop();
+}
+#endif
 
 int main(void) {
     char setup_error[1024];
@@ -570,7 +755,11 @@ int main(void) {
         fatal_error("The game could not initialize.\nCheck free space on ux0 and reboot your Vita.\n\nKeep ux0:data/pvz2/userdata/loader.log for support.\nYour saves have not been reset.");
     }
     run_lifecycle();
+#if PVZ2_STACK_SENTINEL
+    run_frame_loop_padded();
+#else
     run_frame_loop();
+#endif
     return 0;
 }
 

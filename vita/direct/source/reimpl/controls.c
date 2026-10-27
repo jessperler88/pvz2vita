@@ -43,8 +43,10 @@ void controls_tick(uint64_t now_us) {
     if (now_us < next_check) return;
     next_check = now_us + UINT64_C(1000000);
     sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
-    SceTouchSamplingState state;
-    if (sceTouchGetSamplingState(SCE_TOUCH_PORT_FRONT, &state) >= 0 &&
+    /* The system writes 4 bytes. This toolchain makes enums 1 byte wide, so an
+     * enum local here let the call overwrite the caller's saved r4. */
+    SceUInt32 state = 0;
+    if (sceTouchGetSamplingState(SCE_TOUCH_PORT_FRONT, (SceTouchSamplingState *)&state) >= 0 &&
         (state != SCE_TOUCH_SAMPLING_STATE_START || recovered_errors != touch_read_errors)) {
         release_touches();
         if (sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START) >= 0) {

@@ -82,6 +82,49 @@ if(PVZ2_INPUT_REPLAY)
   message(WARNING "INPUT-REPLAY DIAGNOSTIC BUILD: do not publish as a release")
   add_definitions(-DPVZ2_INPUT_REPLAY=1)
 endif()
+option(PVZ2_PERF_PROBE "Measure allocation/copy/lock cost in the opt-in frame log" OFF)
+if(PVZ2_PERF_PROBE)
+  message(WARNING "PERF-PROBE MEASUREMENT BUILD: do not publish as a release")
+  add_definitions(-DPVZ2_PERF_PROBE=1)
+endif()
+option(PVZ2_FASTDIV_STATS "Count fast-division calls in the opt-in frame log" OFF)
+if(PVZ2_FASTDIV_STATS)
+  add_definitions(-DPVZ2_FASTDIV_STATS=1)
+endif()
+option(PVZ2_LOOKUP_PROBE "Time libPVZ2 object lookup sub_b8e2a0 in the opt-in frame log" OFF)
+if(PVZ2_LOOKUP_PROBE)
+  message(WARNING "LOOKUP-PROBE MEASUREMENT BUILD: do not publish as a release")
+  add_definitions(-DPVZ2_LOOKUP_PROBE=1)
+endif()
+option(PVZ2_LOOKUP_AB "Alternate original/fast/verify object lookup per report window" OFF)
+if(PVZ2_LOOKUP_AB)
+  message(WARNING "LOOKUP A/B TEST BUILD: do not publish as a release")
+  add_definitions(-DPVZ2_LOOKUP_AB=1)
+endif()
+option(PVZ2_ABI_CHECK "Log game calls that change callee-saved registers" OFF)
+if(PVZ2_ABI_CHECK)
+  add_definitions(-DPVZ2_ABI_CHECK=1)
+endif()
+option(PVZ2_STACK_SENTINEL "Detect stray writes into the old main-thread stack region" OFF)
+if(PVZ2_STACK_SENTINEL)
+  add_definitions(-DPVZ2_STACK_SENTINEL=1)
+endif()
+option(PVZ2_UV_AB "Alternate original/fast/verify sprite atlas lookup per report window" OFF)
+if(PVZ2_UV_AB)
+  message(WARNING "SPRITE UV A/B TEST BUILD: do not publish as a release")
+  add_definitions(-DPVZ2_UV_AB=1)
+endif()
+option(PVZ2_SAMPLER "Opt-in CPU sampler for libPVZ2 (needs kubridge 0.3+)" OFF)
+# The sampler needs kuKernelMemProtect/exception handlers from the SDK's newer stub.
+if(PVZ2_SAMPLER)
+  set(PVZ2_KUBRIDGE_STUB "$ENV{VITASDK}/arm-vita-eabi/lib/libkubridge_stub.a")
+else()
+  set(PVZ2_KUBRIDGE_STUB "${CMAKE_SOURCE_DIR}/lib/kubridge/libkubridge_stub.a")
+endif()
+if(PVZ2_SAMPLER)
+  message(WARNING "SAMPLER MEASUREMENT BUILD: do not publish as a release")
+  add_definitions(-DPVZ2_SAMPLER=1)
+endif()
 
 # Compatibility variant requested for systems where the port-added startup
 # preflight itself is undesirable. Runtime loader/JNI/graphics failures still
@@ -126,6 +169,14 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/utils/launch_state.c
                source/utils/loading_screen.c
                source/utils/placement_452.c
+               source/utils/use_action_452.c
+               source/utils/perf_probe.c
+               source/utils/lookup_probe.c
+               source/utils/sampler.c
+               source/reimpl/fastdiv.c
+               source/reimpl/lookup_fast.c
+               source/reimpl/sprite_uv_fast.c
+               source/utils/abi_check.c
                source/utils/pixel_workers.c
                source/utils/logger.c
                source/utils/settings.c
@@ -181,7 +232,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       OpenSLES
                       m
                       taihen_stub
-                      ${CMAKE_SOURCE_DIR}/lib/kubridge/libkubridge_stub.a
+                      ${PVZ2_KUBRIDGE_STUB}
                       SceSysmem_stub
                       SceKernelThreadMgr_stub
                       SceKernelModulemgr_stub

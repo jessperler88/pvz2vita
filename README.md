@@ -9,6 +9,20 @@
 
 # Plants vs. Zombies 2 — PS Vita
 
+> [!NOTE]
+> **This is the jessperler88 fork of [LeZergan/pvz2vita](https://github.com/LeZergan/pvz2vita).**
+> The `perf-fixes` branch adds the following to upstream v1.1 (rc29):
+> - a fix for a crash in the game's `use_action` handler (expired weak pointer);
+> - a fix for a touch-state call that overwrote a saved CPU register once a
+>   second, which corrupted frame stats;
+> - faster integer division, object lookup and sprite atlas UV code paths
+>   (about 5–8 ms saved per busy frame at 500 MHz, each checked for identical
+>   results against the original);
+> - optional profiling and A/B testing build options.
+>
+> Details and measurements are in [docs/fork-perf-fixes.md](docs/fork-perf-fixes.md).
+> Setup and data requirements are the same as upstream.
+
 Unofficial PS Vita loader for the Android 4.5.2 ROW build of *Plants vs. Zombies 2*.
 
 [Download v1.1](https://github.com/LeZergan/pvz2vita/releases/tag/v1.1-rc29) — [Setup](#setup) — [Settings guide](docs/settings.md) — [Report a problem](https://github.com/LeZergan/pvz2vita/issues/new?template=bug-report.yml) — [Discord](https://discord.gg/KgSzU8nd8g)

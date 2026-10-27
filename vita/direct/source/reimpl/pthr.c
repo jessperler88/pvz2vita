@@ -26,6 +26,7 @@
 #include "utils/utils.h"
 #include "utils/logger.h"
 #include "utils/telemetry.h"
+#include "utils/perf_probe.h"
 
 #define PTHR_MAX_OBJECTS 8192u
 #define BIONIC_PTHREAD_COND_INITIALIZER 0
@@ -386,7 +387,10 @@ int pthread_mutex_lock_soloader(pthread_mutex_t_bionic *mutex)
     if (!mutex) return bionic_pthread_result(EINVAL);
     int rc = _mutex_t_static_init(mutex, NULL);
     if (rc) return bionic_pthread_result(rc);
-    return bionic_pthread_result(pthread_mutex_lock(mutex->real_ptr));
+    PERF_PROBE_BEGIN(PROBE_MUTEX_LOCK, 0);
+    rc = pthread_mutex_lock(mutex->real_ptr);
+    PERF_PROBE_END(PROBE_MUTEX_LOCK);
+    return bionic_pthread_result(rc);
 }
 
 int pthread_mutex_trylock_soloader(pthread_mutex_t_bionic *mutex)
