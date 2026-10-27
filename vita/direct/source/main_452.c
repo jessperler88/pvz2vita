@@ -45,6 +45,7 @@
 #include "reimpl/lookup_fast.h"
 #include "reimpl/sprite_uv_fast.h"
 #include "utils/abi_check.h"
+#include "utils/gem_shop.h"
 
 #define PVZ2_PATH GAME_DATA_PATH "libPVZ2.so"
 #ifndef PVZ2_SKIP_BOOT_CHECKS
@@ -676,6 +677,10 @@ int main(void) {
     telemetry_log("SETUP", "files/dependencies/writable save paths checked; OBB=%s", pvz2_obb_path());
 #else
     telemetry_log("SETUP", "port-added boot preflight disabled; OBB=%s", pvz2_obb_path());
+#endif
+#if PVZ2_GEM_SHOP
+    /* Before anything reads the OBB: sell premium plants for gems. */
+    pvz2_gem_shop_boot();
 #endif
     clocks_init();
     extern void pvz2_init_thread_affinity(void);

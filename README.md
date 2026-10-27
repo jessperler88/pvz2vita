@@ -20,8 +20,8 @@
 >   results against the original);
 > - optional profiling and A/B testing build options.
 >
-> **Premium plants shop (OBB mod):** offline, the real-money premium plants
-> only show "service unavailable". A modded `game.obb` changes the shop data
+> **Premium plants for gems (built in):** offline, the real-money premium
+> plants only show "service unavailable". This loader changes the shop catalog
 > (`PACKAGES\MAGENTO.RTON`, `MagentoProductProps`) so the premium plants cost
 > **gems** instead. They can then be bought in-game, with gems earned through
 > normal play. Prices are 35 gems (Imitater, Jalapeno, Peanut, Power Lily,
@@ -29,9 +29,16 @@
 > Hurrikale), 55 (Toadstool, Strawburst, Cactus, Fire Peashooter, Ghost Pepper,
 > Homing Thistle, Sweet Potato, Lava Guava) and 75 (Electric Blueberry,
 > Jack O' Lantern, Grapeshot, Cold Snapdragon, Escape Root, Shrinking Violet,
-> Blooming Heart). This was tested on a Vita and works. It only changes game
-> data, not the loader. The modded OBB is not included here, because it
-> contains game files.
+> Blooming Heart).
+>
+> It works on your own unmodified OBB, and nothing extra needs to be
+> downloaded. On first launch the loader patches `game.obb` in place in about
+> a second: it adds about 600 KB at the end of the file and changes 28 header
+> bytes. Saves, coins and gems are not touched. To turn it off, create an
+> empty file `ux0:data/pvz2/userdata/gem_shop_off.txt`. The next launch then
+> restores the original OBB exactly. If the shop catalog doesn't look as
+> expected (another mod, for example), the OBB is left unchanged.
+> Details are in [docs/gem-shop.md](docs/gem-shop.md).
 >
 > Details and measurements are in [docs/fork-perf-fixes.md](docs/fork-perf-fixes.md).
 > Setup and data requirements are the same as upstream.

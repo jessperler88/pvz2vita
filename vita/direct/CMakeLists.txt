@@ -82,6 +82,10 @@ if(PVZ2_INPUT_REPLAY)
   message(WARNING "INPUT-REPLAY DIAGNOSTIC BUILD: do not publish as a release")
   add_definitions(-DPVZ2_INPUT_REPLAY=1)
 endif()
+option(PVZ2_GEM_SHOP "Sell premium plants for gems by patching the shop catalog in the OBB" ON)
+if(PVZ2_GEM_SHOP)
+  add_definitions(-DPVZ2_GEM_SHOP=1)
+endif()
 option(PVZ2_PERF_PROBE "Measure allocation/copy/lock cost in the opt-in frame log" OFF)
 if(PVZ2_PERF_PROBE)
   message(WARNING "PERF-PROBE MEASUREMENT BUILD: do not publish as a release")
@@ -170,6 +174,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/utils/loading_screen.c
                source/utils/placement_452.c
                source/utils/use_action_452.c
+               source/utils/gem_shop.c
                source/utils/perf_probe.c
                source/utils/lookup_probe.c
                source/utils/sampler.c
