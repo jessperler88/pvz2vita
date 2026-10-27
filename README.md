@@ -41,15 +41,15 @@
 > Details are in [docs/gem-shop.md](docs/gem-shop.md).
 >
 > Details and measurements are in [docs/fork-perf-fixes.md](docs/fork-perf-fixes.md).
-> Setup and data requirements are the same as upstream.
+> Setup and data requirements are the same as upstream. **Download:** [v1.1-jp1 release](https://github.com/jessperler88/pvz2vita/releases/tag/v1.1-jp1).
 
 Unofficial PS Vita loader for the Android 4.5.2 ROW build of *Plants vs. Zombies 2*.
 
-[Download v1.1](https://github.com/LeZergan/pvz2vita/releases/tag/v1.1-rc29) — [Setup](#setup) — [Settings guide](docs/settings.md) — [Report a problem](https://github.com/LeZergan/pvz2vita/issues/new?template=bug-report.yml) — [Discord](https://discord.gg/KgSzU8nd8g)
+[Download this fork (v1.1-jp1)](https://github.com/jessperler88/pvz2vita/releases/tag/v1.1-jp1) — [Upstream v1.1](https://github.com/LeZergan/pvz2vita/releases/tag/v1.1-rc29) — [Setup](#setup) — [Settings guide](docs/settings.md) — [Report a problem](https://github.com/LeZergan/pvz2vita/issues/new?template=bug-report.yml) — [Discord](https://discord.gg/KgSzU8nd8g)
 
 | | |
 | :-- | :-- |
-| Current release | Plants vs. Zombies 2 - PS Vita v1.1 (`452-v1.1-rc29`) |
+| Current release | Fork `v1.1-jp1`, based on upstream v1.1 (`452-v1.1-rc29`) |
 | Supported Android set | 4.5.2 ROW, version 147, ARMv7 |
 | Data path | `ux0:data/pvz2` |
 | Licence | [MIT](LICENSE), with third-party notices |
@@ -98,8 +98,11 @@ engine. A compatible modded OBB can replace the original archive.
 
 ### 1. Install the loader
 
-Download `pvz2-vita-latest.vpk` from the
-[RC29 release](https://github.com/LeZergan/pvz2vita/releases/tag/v1.1-rc29).
+Download `pvz2-vita-latest.vpk` from this fork's
+[v1.1-jp1 release](https://github.com/jessperler88/pvz2vita/releases/tag/v1.1-jp1). It includes the crash fix, the speed-ups
+and premium plants for gems. The upstream
+[RC29 release](https://github.com/LeZergan/pvz2vita/releases/tag/v1.1-rc29) is the
+original loader without these changes.
 Copy it to the Vita and install it with VitaShell. Existing users can install
 over the previous loader; keep the game files and back up `userdata/` first.
 
