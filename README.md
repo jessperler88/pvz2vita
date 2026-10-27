@@ -22,7 +22,7 @@
 >
 > **Premium plants shop (OBB mod):** offline, the real-money premium plants
 > only show "service unavailable". A modded `game.obb` changes the shop data
-> (`PACKAGES\MAGENTO.RTON`, `MagentoProductProps`) so the 21 premium plants cost
+> (`PACKAGES\MAGENTO.RTON`, `MagentoProductProps`) so the premium plants cost
 > **gems** instead. They can then be bought in-game, with gems earned through
 > normal play. Prices are 35 gems (Imitater, Jalapeno, Peanut, Power Lily,
 > Squash), 45 (Chomper, Hypno-shroom, Sap-fling, Snow Pea, Starfruit, Torchwood,
